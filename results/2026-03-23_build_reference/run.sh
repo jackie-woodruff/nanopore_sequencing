@@ -84,6 +84,7 @@ function build_bed_files {
     echo "[build_bed_files] Writing ig_regions.bed ..."
     cat > "${scratch}/build_bed_files/ig_regions.bed" << 'EOF'
 chr14	105480000	107023505	IGH
+chr14_hg19	106531320	106569343	IGH_1-8_1-9_SV
 chr2	88837161	89340311	IGK-p
 chr2	89841997	90280099	IGK-d
 chr22	22378774	23423319	IGL
