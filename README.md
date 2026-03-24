@@ -1,4 +1,4 @@
-# nanopore_adaptive_sampling
+# nanopore_sequencing
 
 The goal of this project is to generate the reference sequence needed to perform [Adaptive Sampling](https://nanoporetech.com/document/adaptive-sampling#sample-preparation-and-analysis-advanced) on the Oxford Nanopore.
 

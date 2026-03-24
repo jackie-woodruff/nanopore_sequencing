@@ -23,10 +23,10 @@ module load samtools/1.21 blast/2.16.0+
 
 # ================================ DIRECTORIES ================================
 oscar_pro="/sc/arion/projects/oscarlr"
-scratch="${oscar_pro}/woodrk03/projects/nanopore_adaptive_sampling/results/2026-03-23_sequence_matching"
-exp_data="${oscar_pro}/woodrk03/projects/nanopore_adaptive_sampling/data/2026-03-23_sequence_matching"
-work="/sc/arion/work/woodrk03/nanopore_adaptive_sampling/results/2026-03-23_sequence_matching"
-data_dir="/sc/arion/work/woodrk03/nanopore_adaptive_sampling/data/2026-03-23_sequence_matching"
+scratch="${oscar_pro}/woodrk03/projects/nanopore_sequencing/results/2026-03-23_sequence_matching"
+exp_data="${oscar_pro}/woodrk03/projects/nanopore_sequencing/data/2026-03-23_sequence_matching"
+work="/sc/arion/work/woodrk03/nanopore_sequencing/results/2026-03-23_sequence_matching"
+data_dir="/sc/arion/work/woodrk03/nanopore_sequencing/data/2026-03-23_sequence_matching"
 database="/sc/arion/work/woodrk03/databases"
 bin="/sc/arion/work/woodrk03/bin"
 

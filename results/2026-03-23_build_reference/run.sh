@@ -2,9 +2,9 @@
 #BSUB -J 2026-03-23_build_reference
 #BSUB -P acc_oscarlr
 #BSUB -q premium
-#BSUB -n 1
-#BSUB -W 3:00
-#BSUB -R "rusage[mem=32000]"
+#BSUB -n 8
+#BSUB -W 24:00
+#BSUB -R "rusage[mem=50000]"
 #BSUB -R "span[hosts=1]"
 #BSUB -o %J.stdout
 #BSUB -eo %J.stderr
@@ -15,17 +15,18 @@ set -x
 
 # ================================ MODULES ================================
 module load micromamba/1.5.3-0
+# Required for `micromamba activate` in non-interactive batch shells (LSF).
+eval "$(micromamba shell hook -s bash)"
 
 export JAVA_HOME="/hpc/packages/minerva-rocky9/java/21.0.4/jdk-21.0.4" # set JAVA paths for conda/mamba
 export JAVA_LD_LIBRARY_PATH="${JAVA_HOME}/lib"
 
-module load samtools/1.21
-module load bedtools/2.31.0
+module load samtools/1.21 bedtools/2.31.0
 
 # ================================ DIRECTORIES ================================
-scratch="/sc/arion/projects/oscarlr/woodrk03/projects/nanopore_adaptive_sampling/results/2026-03-23_build_reference"
-exp_data="/sc/arion/projects/oscarlr/woodrk03/projects/nanopore_adaptive_sampling/data/2026-03-23_build_reference"
-work="/sc/arion/work/woodrk03/nanopore_adaptive_sampling/results/2026-03-23_build_reference"
+scratch="/sc/arion/projects/oscarlr/woodrk03/projects/nanopore_sequencing/results/2026-03-23_build_reference"
+exp_data="/sc/arion/projects/oscarlr/woodrk03/projects/nanopore_sequencing/data/2026-03-23_build_reference"
+work="/sc/arion/work/woodrk03/nanopore_sequencing/results/2026-03-23_build_reference"
 database="/sc/arion/work/woodrk03/databases"
 bin="/sc/arion/work/woodrk03/bin"
 
@@ -34,6 +35,7 @@ bin="/sc/arion/work/woodrk03/bin"
 # franken reference:  ${database}/reference/franken/reference.fasta
 # hg38 reference:     ${database}/reference/hg38/hg38.fa
 # hg19 reference:     ${database}/reference/hg19/hg19.fa
+# nanopore reads:     /sc/arion/projects/oscarlr/nanopore_data/data/2025-07-11_PBMC-test/pass.fastq
 
 # ================================ EXPERIMENTAL CODE ================================
 mkdir -p "${scratch}"
@@ -54,9 +56,14 @@ mkdir -p "${work}"
 function build_reference {
     mkdir -p "${scratch}/build_reference"
 
-    conda activate basic_tools
+    micromamba activate basic_tools
 
     echo "[build_reference] Assembling adaptive_sampling_reference.fasta ..."
+    # new chr14 layout:
+    #   chr14:1-105480000           franken chr14 body (1-105480000)
+    #   chr14:105480000-105830378	franken ighc(51364-401741)
+    #   chr14:105830378-107023505	franken igh(3-1193129)
+    #   chr14:107023505-107187380	hg38 chr14 tail (106879844-107043718)
     python3 "${work}/build_reference.py" \
         --franken "${database}/reference/franken/reference.fasta" \
         --hg38    "${database}/reference/hg38/hg38.fa" \
@@ -109,6 +116,68 @@ EOF
     echo "[build_bed_files] Done. BED files are at ${scratch}/build_bed_files/"
 }
 
+# --- Step 3: Test alignment of PBMC nanopore reads to adaptive_sampling_reference ---
+function alignment_test {
+    mkdir -p "${scratch}/alignment_test"
+
+    micromamba activate basic_tools
+
+    # ================================ Aligning reads to adaptive_sampling_reference ================================
+    echo "[alignment_test] Aligning /sc/arion/projects/oscarlr/nanopore_data/data/2025-07-11_PBMC-test/pass.fastq to adaptive_sampling_reference ..."
+    minimap2 \
+        -ax map-ont \
+        -t 16 \
+        "${scratch}/build_reference/adaptive_sampling_reference.fasta" \
+        "/sc/arion/projects/oscarlr/nanopore_data/data/2025-07-11_PBMC-test/pass.fastq" \
+    | samtools sort \
+        -@ 16 \
+        -o "${scratch}/alignment_test/pass_asr.bam"
+
+    echo "[alignment_test] Indexing BAM ..."
+    samtools index "${scratch}/alignment_test/pass_asr.bam"
+
+    echo "[alignment_test] Alignment statistics ..."
+    samtools flagstat "${scratch}/alignment_test/pass_asr.bam" \
+        > "${scratch}/alignment_test/pass_asr.flagstat.txt"
+    cat "${scratch}/alignment_test/pass_asr.flagstat.txt"
+
+    echo "[alignment_test] Done. BAM is at ${scratch}/alignment_test/pass_asr.bam"
+
+    samtools coverage "${scratch}/alignment_test/pass_asr.bam" --plot-depth --region chr14:105480000-107023505 --output "${scratch}/alignment_test/pass_asr_igh.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_asr.bam" --plot-depth --region chr14_hg19:106531320-106569343 --output "${scratch}/alignment_test/pass_asr_igh_hg19.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_asr.bam" --plot-depth --region chr2:88837161-89340311 --output "${scratch}/alignment_test/pass_asr_igk_p.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_asr.bam" --plot-depth --region chr2:89841997-90280099 --output "${scratch}/alignment_test/pass_asr_igk_d.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_asr.bam" --plot-depth --region chr22:22378774-23423319 --output "${scratch}/alignment_test/pass_asr_igl.coverage.txt"
+
+    # ================================ Aligning reads to franken reference ================================
+    echo "[alignment_test] Aligning /sc/arion/projects/oscarlr/nanopore_data/data/2025-07-11_PBMC-test/pass.fastq to franken reference ..."
+    minimap2 \
+        -ax map-ont \
+        -t 16 \
+        "${database}/reference/franken/reference.fasta" \
+        "/sc/arion/projects/oscarlr/nanopore_data/data/2025-07-11_PBMC-test/pass.fastq" \
+    | samtools sort \
+        -@ 16 \
+        -o "${scratch}/alignment_test/pass_franken.bam"
+
+    echo "[alignment_test] Indexing BAM ..."
+    samtools index "${scratch}/alignment_test/pass_franken.bam"
+
+    echo "[alignment_test] Alignment statistics ..."
+    samtools flagstat "${scratch}/alignment_test/pass_franken.bam" \
+        > "${scratch}/alignment_test/pass_franken.flagstat.txt"
+    cat "${scratch}/alignment_test/pass_franken.flagstat.txt"
+
+    echo "[alignment_test] Done. BAM is at ${scratch}/alignment_test/pass_franken.bam"
+
+    samtools coverage "${scratch}/alignment_test/pass_franken.bam" --plot-depth --region igh:3-1193129 --output "${scratch}/alignment_test/pass_franken_igh.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_franken.bam" --plot-depth --region ighc:51364-401741 --output "${scratch}/alignment_test/pass_franken_ighc.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_franken.bam" --plot-depth --region chr2:88837161-89340311 --output "${scratch}/alignment_test/pass_franken_igk_p.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_franken.bam" --plot-depth --region chr2:89841997-90280099 --output "${scratch}/alignment_test/pass_franken_igk_d.coverage.txt"
+    samtools coverage "${scratch}/alignment_test/pass_franken.bam" --plot-depth --region chr22:22414485-23392002 --output "${scratch}/alignment_test/pass_franken_igl.coverage.txt"
+}
+
 # ================================ EXECUTION ================================
-build_reference
-build_bed_files
+# build_reference
+# build_bed_files
+alignment_test
